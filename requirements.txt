@@ -1,0 +1,6 @@
+scikit-learn
+timm
+pandas
+# opencv-python
+matplotlib
+albumentations
