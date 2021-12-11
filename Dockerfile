@@ -29,6 +29,6 @@ RUN pip install --no-cache-dir pillow
 COPY infer.py /model/infer.py
 COPY predict.sh /model/predict.sh
 
-COPY models/* /model
+COPY models/* /model/
 
 COPY cacert.pem /opt/bitnami/python/lib/python3.7/site-packages/certifi/cacert.pem
