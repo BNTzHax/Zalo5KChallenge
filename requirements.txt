@@ -1,6 +1,14 @@
+# PyYAML>=5.3.1
+# scipy>=1.4.1
+# numpy
+# seaborn>=0.11.0
 scikit-learn
+tqdm
 timm
 pandas
 # opencv-python
 matplotlib
 albumentations
+
+seaborn
+
