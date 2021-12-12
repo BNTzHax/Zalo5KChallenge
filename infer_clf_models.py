@@ -23,13 +23,19 @@ ROOT_FOLDER = '/'
 
 SEED = 67
 DIM = (512, 512, 3)
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 SAMPLE = None
 
 # DEVICE = torch.device('cuda:0')
-DEVICE = torch.device('cpu')
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+print(DEVICE)
 
-THRESHOLD = 0.3
+PREDICTION_FOLDER = '/inter_data/'
+if(not os.path.exists(PREDICTION_FOLDER)):
+    os.makedirs(PREDICTION_FOLDER)
+
+THRESHOLD_MASK = 0.3
+THRESHOLD_DISTANCE = 0.3
 
 LABELS = ['Negative for Pneumonia', 'Typical Appearance', 'Indeterminate Appearance', 'Atypical Appearance']
 
@@ -37,7 +43,22 @@ CANDIDATES = [
     {
         'backbone_name':'eca_nfnet_l0',
         'model_path':'/model/Fold0_eca_nfnet_l0_v7_2labels_dedup_relabel_dist_ValidLoss0.356_ValidF10.716_Ep04.pth',
-        'batch_size':4,
+    },
+    {
+        'backbone_name':'eca_nfnet_l0',
+        'model_path':'/model/Fold1_eca_nfnet_l0_v7_2labels_dedup_relabel_dist_ValidLoss0.375_ValidF10.747_Ep04.pth',
+    },
+    {
+        'backbone_name':'eca_nfnet_l0',
+        'model_path':'/model/Fold2_eca_nfnet_l0_v7_2labels_dedup_relabel_dist_ValidLoss0.399_ValidF10.682_Ep04.pth',
+    },
+    {
+        'backbone_name':'eca_nfnet_l0',
+        'model_path':'/model/Fold3_eca_nfnet_l0_v7_2labels_dedup_relabel_dist_ValidLoss0.358_ValidF10.713_Ep05.pth',
+    },
+    {
+        'backbone_name':'eca_nfnet_l0',
+        'model_path':'/model/Fold4_eca_nfnet_l0_v7_2labels_dedup_relabel_dist_ValidLoss0.380_ValidF10.688_Ep04.pth',
     },
 ]
 
@@ -60,9 +81,9 @@ class ClfDataset(torch.utils.data.Dataset):
             augmented = self.augmentations(image=image)
             image = augmented['image']
         
-        if('5k' in self.csv.columns):
-            # return image, torch.tensor(row['5k'])
-            return image, torch.tensor(row[['mask', 'distancing']])
+        # if('5k' in self.csv.columns):
+        #     # return image, torch.tensor(row['5k'])
+        #     return image, torch.tensor(row[['mask', 'distancing']])
         
         return image
 
@@ -99,16 +120,13 @@ def predict_fn(test_loader, model, threshold=None, device='cuda:0'):
     tk0 = tqdm(enumerate(test_loader), total=len(test_loader))
     batch_preds=[]
     for i, batch in tk0:
-        if(len(batch)==2):
-            images, labels = batch
-        else:
-            images = batch
+        images = batch
         images = images.to(device)
         with torch.cuda.amp.autocast(), torch.no_grad():
             logits = model(images)
             probs = torch.sigmoid(logits)
 
-            probs = probs[:,0]*probs[:,1]
+            # probs = probs[:,0]*probs[:,1]
         batch_preds.append(probs.detach().cpu().numpy())
         
         del batch, images, logits, probs
@@ -121,8 +139,11 @@ def predict_fn(test_loader, model, threshold=None, device='cuda:0'):
 
 if __name__ == '__main__':
     test_df = pd.read_csv(f'{TEST_FOLDER}/private_test_meta.csv')
+    print('Number of test images:', len(test_df))
 
-    test_df['5K_prob'] = 0
+    test_df['mask_prob'] = 0
+    test_df['distancing_prob'] = 0
+    
     for candidate in CANDIDATES:
         print(f"=========== Candidate: {candidate['model_path']} ===========")
 
@@ -134,14 +155,17 @@ if __name__ == '__main__':
 
         test_ds = ClfDataset(test_df, f'{TEST_FOLDER}/images/', get_valid_transforms(candidate))
         test_loader = torch.utils.data.DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=4)
-        test_df['5K_prob'] += predict_fn(test_loader, model, device=DEVICE)
+        predicted_probs = predict_fn(test_loader, model, device=DEVICE)
+        test_df['mask_prob'] += predicted_probs[:,0]
+        test_df['distancing_prob'] += predicted_probs[:,1]
 
-    test_df['5K_prob'] /= len(CANDIDATES)
+    test_df['mask_prob'] /= len(CANDIDATES)
+    test_df['distancing_prob'] /= len(CANDIDATES)
 
-    test_df['5K'] = (test_df['5K_prob'] >= THRESHOLD).astype(int)
-    print(test_df['5K'].value_counts())
+    test_df['mask'] = (test_df['mask_prob'] >= THRESHOLD_MASK).astype(int)
+    test_df['distancing'] = (test_df['distancing_prob'] >= THRESHOLD_DISTANCE).astype(int)
 
-    sub_out_path = '/result/submission.csv'
+    sub_out_path = f'{PREDICTION_FOLDER}/clf_predicted_probs.csv'
     print(sub_out_path)
 
-    test_df[['image_id', 'fname', '5K']].to_csv(sub_out_path, index=False)
+    test_df[['image_id', 'fname', 'mask', 'distancing']].to_csv(sub_out_path, index=False)
