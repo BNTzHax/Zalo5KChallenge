@@ -27,4 +27,5 @@
 - ....|--------- train
 - .................|---------- images/
 - .................|---------- train_meta.csv
+
 [save-weight-folder]: Path to folder where trained weights will be saved
